@@ -4,7 +4,11 @@ import (
 	"image/color"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
+	"time"
+
+	_ "net/http/pprof"
 
 	"github.com/golang/freetype/truetype"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -16,61 +20,85 @@ import (
 
 var (
 	fulscreen bool = true
-	cellSize  int  = 3
+	cellSize  int  = 2
 )
 
-func draw(screen *ebiten.Image) {
-	// vector.DrawFilledRect(screen, 200, 200, float32(cellSize), float32(cellSize), color.White, false)
-	// for i := range g.board {
-	// 	for j := range g.board[i] {
-	// 		if Game.board[i][j] {
-	// 			vector.DrawFilledRect(screen, float64(i*cellSize), float64(j*cellSize), cellSize, cellSize, color.White)
-	// 		}
-	// 	}
-	// }
-
-	// vector.DrawFilledRect(screen, 200, 250, 10, 10, color.White, false)
-	// vector.DrawFilledRect(screen, 200, 300, 30, 30, color.White, false)
-	//vector.DrawFilledCircle(screen, 400, 400, 50, color.White, false)
-}
-
-func getWindowSize() (width int, height int) {
-	if ebiten.IsFullscreen() {
-		return ebiten.ScreenSizeInFullscreen()
-	}
-	return ebiten.WindowSize()
-}
+// func getWindowSize() (width int, height int) {
+// 	if ebiten.IsFullscreen() {
+// 		return ebiten.ScreenSizeInFullscreen()
+// 	}
+// 	return ebiten.WindowSize()
+// }
 
 func main() {
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	game := &Game{}
 	ebiten.SetWindowTitle("Game of Life")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowDecorated(true)
 	ebiten.SetFullscreen(fulscreen)
+
 	width, height := ebiten.ScreenSizeInFullscreen()
+	game.windowHeight = height
+	game.windowWidth = width
 	log.Printf("Window size: %dx%d", width, height)
 
-	board := make([][]bool, width/cellSize)
-	for i := range board {
-		board[i] = make([]bool, height/cellSize)
-		for j := range board[i] {
-			board[i][j] = rand.Float32() < 0.5
-		}
-	}
-	game.board = board
+	rand.Seed(time.Now().UnixNano())
+	// board := make([][]bool, width/cellSize)
+	// for i := range board {
+	// 	board[i] = make([]bool, height/cellSize)
+	// 	for j := range board[i] {
+	// 		board[i][j] = rand.Intn(10) == 1
+	// 	}
+	// }
+	// game.board = board
+	initboard(game)
 
+	game.gameStart = time.Now()
 	if err := ebiten.RunGame(game); err != nil {
 		panic(err)
 	}
+}
+
+func initboard(game *Game) {
+	board := make([][]bool, game.windowWidth/cellSize)
+	for i := range board {
+		board[i] = make([]bool, game.windowHeight/cellSize)
+		for j := range board[i] {
+			board[i][j] = rand.Intn(10) == 1
+		}
+	}
+	game.board = board
 }
 
 type Game struct {
 	windowWidth  int
 	windowHeight int
 	board        [][]bool
+	gameStart    time.Time
+	cycleCount   int64
 }
 
 func (game *Game) Update() error {
+
+	game.cycleCount++
+	elapsed := time.Since(game.gameStart).Seconds()
+
+	//log.Println(game.cycleCount, game.cycleCount/int64(elapsed))
+	if game.cycleCount%100 == 0 {
+		log.Println("Total cycles done:", game.cycleCount, " current rate", game.cycleCount/int64(elapsed), "cycles/s")
+	}
+	// Exit the game after 20 seconds
+	if elapsed > 2000 {
+		//log.Println("Time elapsed", game.gameStart, dt)
+		os.Exit(0)
+	}
+	//game.elapsedTime += dt
+
 	game.windowWidth, game.windowHeight = ebiten.WindowSize()
 	if ebiten.IsKeyPressed(ebiten.KeyQ) {
 		os.Exit(0)
@@ -78,6 +106,15 @@ func (game *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
 		fulscreen = !fulscreen
 		ebiten.SetFullscreen(fulscreen)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyNumpadAdd) {
+		cellSize++
+
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyNumpadSubtract) {
+		if cellSize > 1 {
+			cellSize--
+		}
 	}
 	newBoard := make([][]bool, len(game.board))
 	for i := range game.board {
@@ -97,32 +134,6 @@ func (game *Game) Update() error {
 	game.board = newBoard
 	return nil
 }
-
-// func (game *Game) Update() error {
-// 	game.windowWidth, game.windowHeight = ebiten.WindowSize()
-// 	if ebiten.IsKeyPressed(ebiten.KeyQ) {
-// 		os.Exit(0)
-// 	}
-// 	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
-// 		fulscreen = !fulscreen
-// 		ebiten.SetFullscreen(fulscreen)
-// 	}
-
-// 	rows, cols := len(game.board), len(game.board[0])
-// 	for i := 0; i < rows; i++ {
-// 		for j := 0; j < cols; j++ {
-// 			alive := game.board[i][j]
-// 			neighbors := game.countNeighbors(i, j)
-
-// 			// Compute the new cell state using bitwise operations
-// 			newState := (alive && (neighbors == 2 || neighbors == 3)) || (!alive && neighbors == 3)
-
-// 			game.board[i][j] = newState
-// 		}
-// 	}
-
-// 	return nil
-// }
 
 func (game *Game) countNeighbors(x, y int) int {
 	count := 0
@@ -145,11 +156,6 @@ func (game *Game) countNeighbors(x, y int) int {
 }
 
 func (game *Game) Draw(screen *ebiten.Image) {
-	//regularFont := GetFont()
-	//windowWidth, windowHeight := getWindowSize()
-	//text.Draw(screen, fmt.Sprintf("Current resolution %dx%d", windowWidth, windowHeight), regularFont, 0, 100, color.White)
-	//draw(screen)
-	//vector.DrawFilledRect(screen, 200, 200, float32(cellSize), float32(cellSize), color.White, false)
 	for i := range game.board {
 		for j := range game.board[i] {
 			if game.board[i][j] {
