@@ -23,13 +23,13 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgl1-mesa-dev xorg-dev libasound2-dev
+        sudo apt-get install -y libgl1-mesa-dev xorg-dev libasound2-dev xvfb
     
     - name: Install dependencies
       run: go mod download
     
     - name: Run tests
-      run: go test -v -race -coverprofile=coverage.out -covermode=atomic
+      run: xvfb-run -a go test -v -race -coverprofile=coverage.out -covermode=atomic
     
     - name: Check test coverage
       run: |
